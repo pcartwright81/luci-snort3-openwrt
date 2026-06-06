@@ -1,0 +1,46 @@
+{
+	"luci.snort": {
+		"get_status": {
+			"NO_UBUS_AUTH": false,
+			"access": [
+				{ "id": "luci-mod-admin-full", "methods": ["read"] }
+			]
+		},
+		"get_alerts": {
+			"NO_UBUS_AUTH": false,
+			"access": [
+				{ "id": "luci-mod-admin-full", "methods": ["read"] }
+			]
+		},
+		"service_action": {
+			"NO_UBUS_AUTH": false,
+			"access": [
+				{ "id": "luci-mod-admin-full", "methods": ["read", "write"] }
+			]
+		},
+		"update_rules": {
+			"NO_UBUS_AUTH": false,
+			"access": [
+				{ "id": "luci-mod-admin-full", "methods": ["read", "write"] }
+			]
+		},
+		"check_update_status": {
+			"NO_UBUS_AUTH": false,
+			"access": [
+				{ "id": "luci-mod-admin-full", "methods": ["read"] }
+			]
+		},
+		"cleanup_temp": {
+			"NO_UBUS_AUTH": false,
+			"access": [
+				{ "id": "luci-mod-admin-full", "methods": ["read", "write"] }
+			]
+		},
+		"fix_rules": {
+			"NO_UBUS_AUTH": false,
+			"access": [
+				{ "id": "luci-mod-admin-full", "methods": ["read", "write"] }
+			]
+		}
+	}
+}
