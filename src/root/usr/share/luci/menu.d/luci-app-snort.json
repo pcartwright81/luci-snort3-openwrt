@@ -1,0 +1,61 @@
+{
+	"admin/services/snort": {
+		"title": "Snort IDS/IPS",
+		"order": 60,
+		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": [ "luci-app-snort" ],
+			"uci": { "snort": true }
+		}
+	},
+
+	"admin/services/snort/status": {
+		"title": "Status",
+		"order": 10,
+		"action": {
+			"type": "view",
+			"path": "snort/status"
+		},
+		"depends": {
+			"acl": [ "luci-app-snort" ]
+		}
+	},
+
+	"admin/services/snort/config": {
+		"title": "Settings",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "snort/config"
+		},
+		"depends": {
+			"acl": [ "luci-app-snort" ]
+		}
+	},
+
+	"admin/services/snort/alerts": {
+		"title": "Alerts",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "snort/alerts"
+		},
+		"depends": {
+			"acl": [ "luci-app-snort" ]
+		}
+	},
+
+	"admin/services/snort/log": {
+		"title": "Log",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "snort/log"
+		},
+		"depends": {
+			"acl": [ "luci-app-snort" ]
+		}
+	}
+}

@@ -1,36 +1,52 @@
+luci-snort3-openwrt (convert-to-js branch)
+
+Repository layout
+-----------------
 .
-./CHANGELOG.md
-./CHANGES_SUMMARY.md
-./CONTRIBUTING.md
-./LICENSE
-./PROJECT_STRUCTURE.txt
-./README.md
-./docs
-./docs/INSTALLATION.md
-./docs/USAGE.md
-./generate_install.py
-./install.sh
-./original_script.sh
-./src
-./src/controller
-./src/controller/snort.lua
-./src/i18n
-./src/i18n/snort.en.po
-./src/i18n/snort.fr.po
-./src/model
-./src/model/cbi
-./src/model/cbi/snort
-./src/model/cbi/snort/config.lua
-./src/view
-./src/view/snort
-./src/view/snort/alerts.htm
-./src/view/snort/control.htm
-./src/view/snort/recent_alerts.htm
-./src/view/snort/status.htm
-./src/view/snort/status_page.htm
-./verify.sh
-./{src
-./{src/{controller,model
-./{src/{controller,model/cbi
-./{src/{controller,model/cbi/snort,view
-./{src/{controller,model/cbi/snort,view/snort,i18n},docs}
+├── install.sh                   Online installer (wget/curl from router)
+├── verify.sh                    Post-install verification script
+├── generate_install.py          Generates install_offline.sh with embedded files
+├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── README.md
+├── docs/
+│   ├── INSTALLATION.md
+│   └── USAGE.md
+└── src/
+    ├── ucode/
+    │   └── snort.uc             ucode RPC module → /usr/share/rpcd/ucode/snort
+    │                            Exports: get_status, get_alerts, update_rules,
+    │                                     check_update_status, cleanup_temp, fix_rules
+    ├── rpcd/
+    │   └── snort.json           rpcd ACL policy → /usr/share/rpcd/acl.d/luci-app-snort.json
+    ├── root/
+    │   └── usr/share/luci/menu.d/
+    │       └── luci-app-snort.json  LuCI nav menu → /usr/share/luci/menu.d/
+    ├── htdocs/
+    │   └── luci-static/resources/view/snort/
+    │       ├── config.js        Settings page  → /www/luci-static/resources/view/snort/
+    │       ├── status.js        Status page
+    │       ├── alerts.js        Alerts page
+    │       └── log.js           Syslog page (ubus log.read, filtered to 'snort')
+    ├── etc/
+    │   └── init.d/
+    │       └── snort            procd init script → /etc/init.d/snort
+    └── i18n/
+        ├── snort.en.po          English translations
+        └── snort.fr.po          French translations
+
+Installed paths on router
+-------------------------
+/usr/share/rpcd/ucode/snort          ucode RPC module
+/usr/share/rpcd/acl.d/luci-app-snort.json   rpcd ACL
+/usr/share/luci/menu.d/luci-app-snort.json  LuCI nav menu
+/www/luci-static/resources/view/snort/config.js
+/www/luci-static/resources/view/snort/status.js
+/www/luci-static/resources/view/snort/alerts.js
+/www/luci-static/resources/view/snort/log.js
+/etc/init.d/snort                    procd service
+/etc/config/snort                    UCI config (created by installer)
+
+NOTE: The old Lua paths (/usr/lib/lua/luci/controller/, /usr/lib/lua/luci/model/,
+      /usr/lib/lua/luci/view/) are NOT used. This package requires OpenWrt 22.03+
+      with modern JS-based LuCI.
