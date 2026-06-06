@@ -1,46 +1,32 @@
 {
-	"luci.snort": {
-		"get_status": {
-			"NO_UBUS_AUTH": false,
-			"access": [
-				{ "id": "luci-mod-admin-full", "methods": ["read"] }
-			]
+	"luci-app-snort": {
+		"description": "Grant LuCI access to Snort3 RPC methods and log reading",
+		"read": {
+			"ubus": {
+				"luci.snort": [
+					"get_status",
+					"get_alerts",
+					"check_update_status"
+				],
+				"log": [
+					"read"
+				],
+				"luci": [
+					"getInitList"
+				]
+			}
 		},
-		"get_alerts": {
-			"NO_UBUS_AUTH": false,
-			"access": [
-				{ "id": "luci-mod-admin-full", "methods": ["read"] }
-			]
-		},
-		"service_action": {
-			"NO_UBUS_AUTH": false,
-			"access": [
-				{ "id": "luci-mod-admin-full", "methods": ["read", "write"] }
-			]
-		},
-		"update_rules": {
-			"NO_UBUS_AUTH": false,
-			"access": [
-				{ "id": "luci-mod-admin-full", "methods": ["read", "write"] }
-			]
-		},
-		"check_update_status": {
-			"NO_UBUS_AUTH": false,
-			"access": [
-				{ "id": "luci-mod-admin-full", "methods": ["read"] }
-			]
-		},
-		"cleanup_temp": {
-			"NO_UBUS_AUTH": false,
-			"access": [
-				{ "id": "luci-mod-admin-full", "methods": ["read", "write"] }
-			]
-		},
-		"fix_rules": {
-			"NO_UBUS_AUTH": false,
-			"access": [
-				{ "id": "luci-mod-admin-full", "methods": ["read", "write"] }
-			]
+		"write": {
+			"ubus": {
+				"luci.snort": [
+					"update_rules",
+					"cleanup_temp",
+					"fix_rules"
+				],
+				"luci": [
+					"setInitAction"
+				]
+			}
 		}
 	}
 }

@@ -1,0 +1,60 @@
+#!/bin/sh /etc/rc.common
+# Snort3 procd init script
+# Install to: /etc/init.d/snort
+
+USE_PROCD=1
+START=90
+STOP=10
+
+APP=/usr/bin/snort
+CONFIG_FILE=/etc/snort/snort.lua
+LOG_DIR=/var/log
+
+start_service() {
+	local enabled interface mode method home_net config_dir log_dir
+
+	config_load snort
+	config_get enabled  snort enabled  '0'
+	config_get interface snort interface ''
+	config_get mode     snort mode     'ids'
+	config_get method   snort method   'afpacket'
+	config_get home_net snort home_net '192.168.0.0/24'
+	config_get config_dir snort config_dir '/etc/snort'
+	config_get log_dir  snort log_dir  '/var/log'
+
+	[ "$enabled" = '1' ] || return 0
+	[ -n "$interface" ]  || { echo 'snort: no interface configured'; return 1; }
+	[ -x "$APP" ]        || { echo "snort: $APP not found"; return 1; }
+
+	mkdir -p "$log_dir"
+
+	procd_open_instance
+	procd_set_param command "$APP"
+
+	# Common flags
+	procd_append_param command -c "${config_dir}/snort.lua"
+	procd_append_param command -i "$interface"
+	procd_append_param command -l "$log_dir"
+	procd_append_param command --daq "$method"
+
+	# IPS mode adds inline flag
+	[ "$mode" = 'ips' ] && procd_append_param command -Q
+
+	procd_set_param respawn ${respawn_threshold:-3600} ${respawn_timeout:-5} ${respawn_retry:-5}
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+stop_service() {
+	# procd handles SIGTERM; nothing extra needed
+	:
+}
+
+reload_service() {
+	procd_send_signal snort '*' SIGHUP
+}
+
+service_triggers() {
+	procd_add_reload_trigger snort
+}

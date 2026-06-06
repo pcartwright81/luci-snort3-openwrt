@@ -1,175 +1,186 @@
 /**
- * LuCI Snort3 Module - Status Page View
- * Copyright (C) 2025 David Dzieciol <david.dzieciol51100@gmail.com>
+ * LuCI Snort3 - Status View
  *
- * This is free software, licensed under the GNU General Public License v2.
- * See /LICENSE for more information.
+ * Service control (start/stop/restart) is done via the standard luci
+ * ubus object (callInitAction), matching the luci-app-lldpd pattern.
+ * No custom service_action RPC is used.
  *
- * Replaces: src/view/snort/status_page.htm
  * Install to: /www/luci-static/resources/view/snort/status.js
  */
 
 'use strict';
 'require view';
-'require poll';
 'require rpc';
+'require poll';
 'require ui';
 
+/* ── luci built-in service helpers ──────────────────────────────────────── */
+const callInitList = rpc.declare({
+	object: 'luci',
+	method: 'getInitList',
+	params: ['name'],
+	expect: { '': {} }
+});
+
+const callInitAction = rpc.declare({
+	object: 'luci',
+	method: 'setInitAction',
+	params: ['name', 'action'],
+	expect: { result: false }
+});
+
+/* ── snort status RPC ────────────────────────────────────────────────────── */
 const callGetStatus = rpc.declare({
 	object: 'luci.snort',
 	method: 'get_status',
 	params: []
 });
 
-const callServiceAction = rpc.declare({
+const callGetAlerts = rpc.declare({
 	object: 'luci.snort',
-	method: 'service_action',
-	params: ['action']
+	method: 'get_alerts',
+	params: []
 });
 
 return view.extend({
 
-	/* Initial data load */
-	load: function () {
-		return callGetStatus();
+	load() {
+		return Promise.all([
+			callGetStatus(),
+			callGetAlerts(),
+			callInitList('snort'),
+		]);
 	},
 
-	/* Build the DOM once; poll() will update the status rows in place */
-	render: function (initialStatus) {
-		const view = this;
-
-		/* ── Helpers ──────────────────────────────────────────── */
-		function statusBadge(running) {
-			const color = running ? 'green' : 'red';
-			const label = running ? _('Running') : _('Stopped');
-			return `<span style="color:${color};font-weight:bold">&#9679; ${label}</span>`;
+	_updateStatus(statusData) {
+		const running = statusData && statusData.running;
+		const el = document.getElementById('snort-status-state');
+		if (el) {
+			el.innerHTML = running
+				? `<span style="color:#4caf50;font-weight:bold">&#9679; ${_('Running')} (PID ${statusData.pid || '?'})</span>`
+				: `<span style="color:#f44336;font-weight:bold">&#9679; ${_('Stopped')}</span>`;
 		}
-
-		function memBar(used, total, pct) {
-			const color = pct > 80 ? 'red' : (pct > 60 ? 'orange' : 'green');
-			return `<span style="color:${color}">${used} MB / ${total} MB (${pct}%)</span>`;
-		}
-
-		/* ── Row factory ──────────────────────────────────────── */
-		function row(label, id, initial) {
-			return E('tr', {}, [
-				E('td', { style: 'width:30%;font-weight:bold' }, label + ':'),
-				E('td', { id })
-			]);
-		}
-
-		/* ── Status section ───────────────────────────────────── */
-		const statusTable = E('table', { style: 'width:100%' }, [
-			row(_('Status'),        'snort_status'),
-			row('PID',              'snort_pid'),
-			row(_('Snort memory'),  'snort_mem'),
-			row(_('System memory'), 'sys_mem'),
-			row(_('Total alerts'),  'snort_alerts'),
-			row(_('Interface'),     'snort_interface'),
-			row(_('Mode'),          'snort_mode'),
-			row(_('DAQ method'),    'snort_method')
-		]);
-
-		/* ── Control buttons ──────────────────────────────────── */
-		function makeBtn(id, cls, label, action) {
-			return E('button', {
-				id,
-				class: `btn cbi-button ${cls}`,
-				style: 'margin:4px',
-				click: function () { view.handleAction(action, this); }
-			}, label);
-		}
-
-		const controls = E('div', { style: 'padding:10px 0' }, [
-			makeBtn('snort-start',   'cbi-button-apply',  '\u25B6 ' + _('Start'),          'start'),
-			makeBtn('snort-stop',    'cbi-button-reset',  '\u25A0 ' + _('Stop'),           'stop'),
-			makeBtn('snort-restart', 'cbi-button-reload', '\u21BB ' + _('Restart'),        'restart'),
-			makeBtn('snort-enable',  'cbi-button-save',   _('Enable at boot'),             'enable'),
-			makeBtn('snort-disable', 'cbi-button-remove', _('Disable at boot'),            'disable')
-		]);
-
-		/* ── Quick links ──────────────────────────────────────── */
-		const quickLinks = E('div', { style: 'padding:10px' }, [
-			E('a', {
-				href: L.url('admin/services/snort/alerts'),
-				class: 'btn cbi-button cbi-button-apply',
-				style: 'margin-right:8px'
-			}, _('See alerts')),
-			E('a', {
-				href: L.url('admin/services/snort'),
-				class: 'btn cbi-button'
-			}, _('Full configuration'))
-		]);
-
-		/* ── Full page ────────────────────────────────────────── */
-		const page = E([], [
-			E('h2', {}, _('Snort IDS/IPS')),
-
-			E('fieldset', { class: 'cbi-section' }, [
-				E('legend', {}, _('Service Status')),
-				E('div', {
-					style: 'background:#f9f9f9;padding:15px;border-radius:5px;border:1px solid #ddd'
-				}, [ statusTable ])
-			]),
-
-			E('fieldset', { class: 'cbi-section' }, [
-				E('legend', {}, _('Controls')),
-				controls
-			]),
-
-			E('fieldset', { class: 'cbi-section' }, [
-				E('legend', {}, _('Quick actions')),
-				quickLinks
-			])
-		]);
-
-		/* ── Apply initial data ───────────────────────────────── */
-		if (initialStatus) view.updateStatus(initialStatus);
-
-		/* ── Start polling every 3 s ──────────────────────────── */
-		poll.add(function () {
-			return callGetStatus().then(function (status) {
-				if (status) view.updateStatus(status);
-			});
-		}, 3);
-
-		return page;
-	},
-
-	/** Update the status table rows with fresh data from the RPC. */
-	updateStatus: function (s) {
-		function set(id, html) {
-			const el = document.getElementById(id);
-			if (el) el.innerHTML = html;
-		}
-
-		const color = s.running ? 'green' : 'red';
-		const label = s.running ? _('Running') : _('Stopped');
-		set('snort_status',    `<span style="color:${color};font-weight:bold">&#9679; ${label}</span>`);
-		set('snort_pid',       s.pid       || 'N/A');
-		set('snort_mem',       s.mem_usage || 'N/A');
-		set('snort_alerts',    String(s.alert_count));
-		set('snort_interface', s.interface  || 'N/A');
-		set('snort_mode',      (s.mode   || '').toUpperCase());
-		set('snort_method',    (s.method || '').toUpperCase());
-
-		const p = s.mem_percent || 0;
-		const c = p > 80 ? 'red' : (p > 60 ? 'orange' : 'green');
-		set('sys_mem', `<span style="color:${c}">${s.mem_used} MB / ${s.mem_total} MB (${p}%)</span>`);
-	},
-
-	/** Handle a service action button click. */
-	handleAction: function (action, btn) {
-		const btns = document.querySelectorAll('[id^="snort-"]');
-		btns.forEach(b => { b.disabled = true; });
-
-		return callServiceAction(action).then(function (res) {
-			btns.forEach(b => { b.disabled = false; });
-			if (res && res.success) {
-				ui.addNotification(null, E('p', res.message), 'info');
-			} else {
-				ui.addNotification(null, E('p', (res && res.message) || _('Error')), 'error');
-			}
+		['mem_used','mem_total','mem_percent','alert_count','interface','mode','method'].forEach(k => {
+			const e = document.getElementById(`snort-status-${k}`);
+			if (e) e.textContent = statusData[k] ?? '';
 		});
-	}
+	},
+
+	render([statusData, alertData]) {
+		const running = statusData && statusData.running;
+
+		const node = E([], [
+			E('h2', {}, _('Snort Status')),
+
+			/* ── Status card ────────────────────────────────── */
+			E('div', { class: 'cbi-section' }, [
+				E('div', { class: 'cbi-section-node' }, [
+					E('table', { class: 'table' }, [
+						E('tr', { class: 'tr' }, [
+							E('td', { class: 'td left', style: 'width:30%' }, _('State')),
+							E('td', { class: 'td', id: 'snort-status-state' },
+								running
+									? E('span', { style: 'color:#4caf50;font-weight:bold' }, `\u25cf ${_('Running')} (PID ${statusData.pid || '?'})`)
+									: E('span', { style: 'color:#f44336;font-weight:bold' }, `\u25cf ${_('Stopped')}`)
+							)
+						]),
+						E('tr', { class: 'tr' }, [
+							E('td', { class: 'td left' }, _('Interface')),
+							E('td', { class: 'td', id: 'snort-status-interface' }, statusData.interface || '—')
+						]),
+						E('tr', { class: 'tr' }, [
+							E('td', { class: 'td left' }, _('Mode')),
+							E('td', { class: 'td', id: 'snort-status-mode' }, statusData.mode || '—')
+						]),
+						E('tr', { class: 'tr' }, [
+							E('td', { class: 'td left' }, _('Method')),
+							E('td', { class: 'td', id: 'snort-status-method' }, statusData.method || '—')
+						]),
+						E('tr', { class: 'tr' }, [
+							E('td', { class: 'td left' }, _('Memory Used')),
+							E('td', { class: 'td' }, [
+								E('span', { id: 'snort-status-mem_used' }, String(statusData.mem_used || 0)),
+								' MB / ',
+								E('span', { id: 'snort-status-mem_total' }, String(statusData.mem_total || 0)),
+								' MB (',
+								E('span', { id: 'snort-status-mem_percent' }, String(statusData.mem_percent || 0)),
+								'%)'
+							])
+						]),
+						E('tr', { class: 'tr' }, [
+							E('td', { class: 'td left' }, _('Alert Count')),
+							E('td', { class: 'td', id: 'snort-status-alert_count' }, String(statusData.alert_count || 0))
+						]),
+					])
+				])
+			]),
+
+			/* ── Service control buttons ─────────────────────── */
+			E('div', { class: 'cbi-section' }, [
+				E('h3', {}, _('Service Control')),
+				E('div', { class: 'cbi-section-node' }, [
+					E('div', { class: 'cbi-value-field' }, [
+						E('button', {
+							class: 'btn cbi-button cbi-button-apply',
+							click: () => this._serviceAction('start')
+						}, `\u25b6 ${_('Start')}`),
+						' ',
+						E('button', {
+							class: 'btn cbi-button cbi-button-reset',
+							click: () => this._serviceAction('stop')
+						}, `\u25a0 ${_('Stop')}`),
+						' ',
+						E('button', {
+							class: 'btn cbi-button cbi-button-reload',
+							click: () => this._serviceAction('restart')
+						}, `\u21bb ${_('Restart')}`),
+					])
+				])
+			]),
+
+			/* ── Recent alerts snippet ───────────────────────── */
+			E('div', { class: 'cbi-section' }, [
+				E('h3', {}, _('Recent Alerts')),
+				E('div', { class: 'cbi-section-node' }, [
+					E('textarea', {
+						id: 'snort-alert-box',
+						readonly: 'readonly',
+						wrap: 'off',
+						style: 'width:100%;min-height:180px;font-size:12px;font-family:monospace',
+					}, alertData && alertData.alerts ? alertData.alerts : _('No alerts'))
+				])
+			]),
+		]);
+
+		/* Poll status every 5 s */
+		poll.add(() => {
+			return Promise.all([callGetStatus(), callGetAlerts()]).then(([s, a]) => {
+				this._updateStatus(s);
+				const alertBox = document.getElementById('snort-alert-box');
+				if (alertBox) alertBox.value = (a && a.alerts) ? a.alerts : _('No alerts');
+			});
+		}, 5);
+
+		return node;
+	},
+
+	_serviceAction(action) {
+		const labels = {
+			start:   _('Snort started'),
+			stop:    _('Snort stopped'),
+			restart: _('Snort restarted'),
+		};
+		callInitAction('snort', action).then(ok => {
+			if (ok)
+				ui.addNotification(null, E('p', labels[action] || action), 'info');
+			else
+				ui.addNotification(null, E('p', _('Action failed')), 'error');
+			/* Refresh status immediately after action */
+			callGetStatus().then(s => this._updateStatus(s));
+		});
+	},
+
+	handleSaveApply: null,
+	handleSave:      null,
+	handleReset:     null
 });

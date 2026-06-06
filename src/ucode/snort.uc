@@ -1,11 +1,18 @@
 /**
- * LuCI Snort3 Module - ucode RPC Controller
- * Copyright (C) 2025 David Dzieciol <david.dzieciol51100@gmail.com>
+ * LuCI Snort3 Module - ucode RPC Module
  *
- * This is free software, licensed under the GNU General Public License v2.
- * See /LICENSE for more information.
+ * Only contains operations that need elevated privileges beyond what
+ * the luci built-in init/service ubus calls provide:
+ *   - get_status   (read proc/uci info)
+ *   - get_alerts   (read alert log file)
+ *   - update_rules (run rules updater in background)
+ *   - check_update_status (poll background update progress)
+ *   - cleanup_temp (remove stale temp files)
+ *   - fix_rules    (create symlink for rules dir)
  *
- * Replaces: src/controller/snort.lua
+ * Service start/stop/restart/enable/disable is handled by the standard
+ * luci ubus object (luci.setInitAction / luci.getInitList) in the JS views.
+ *
  * Install to: /usr/share/rpcd/ucode/snort
  */
 
@@ -13,11 +20,6 @@
 
 import { access, popen } from 'fs';
 
-/**
- * Run a shell command and return trimmed stdout.
- * @param {string} cmd
- * @returns {string}
- */
 function exec(cmd) {
 	const fd = popen(cmd, 'r');
 	if (!fd) return '';
@@ -26,30 +28,18 @@ function exec(cmd) {
 	return trim(out);
 }
 
-/**
- * Trim leading/trailing whitespace.
- * @param {string} s
- * @returns {string}
- */
 function trim(s) {
 	if (!s) return '';
 	return replace(s, /^\s+|\s+$/g, '');
 }
 
-/**
- * Read a UCI option value.
- * @param {string} pkg
- * @param {string} section
- * @param {string} option
- * @returns {string}
- */
 function uci_get(pkg, section, option) {
 	return trim(exec(`uci -q get ${pkg}.${section}.${option}`));
 }
 
 /**
  * RPC: get_status
- * Returns current Snort runtime status as JSON.
+ * Returns current Snort runtime status.
  */
 export function get_status() {
 	const running = (system('/etc/init.d/snort status >/dev/null 2>&1') === 0);
@@ -91,42 +81,19 @@ export function get_status() {
 
 /**
  * RPC: get_alerts
- * Returns last 50 alert lines and last 20 syslog lines.
+ * Returns last 50 lines from the Snort alert_fast log.
  */
 export function get_alerts() {
 	const alerts = trim(exec(
 		"[ -f /var/log/alert_fast.txt ] && tail -50 /var/log/alert_fast.txt | tac || echo ''"
 	));
-	const logs = trim(exec("logread | grep snort | tail -20 | tac"));
-	return { alerts, logs };
-}
-
-/**
- * RPC: service_action
- * Performs start / stop / restart / enable / disable on the snort init script.
- * @param {object} args  - { action: string }
- */
-export function service_action(args) {
-	const action = args?.action ?? '';
-	const messages = {
-		start:   'Snort started',
-		stop:    'Snort stopped',
-		restart: 'Snort restarted',
-		enable:  'Auto-start enabled',
-		disable: 'Auto-start disabled'
-	};
-
-	if (!messages[action]) {
-		return { success: false, message: 'Unknown action' };
-	}
-
-	system(`/etc/init.d/snort ${action} >/dev/null 2>&1`);
-	return { success: true, message: messages[action] };
+	return { alerts };
 }
 
 /**
  * RPC: update_rules
  * Launches the snort-rules update script in the background.
+ * Uses a lock file to prevent concurrent runs.
  */
 export function update_rules() {
 	const lock_file = '/tmp/snort_rules_update.lock';
@@ -149,13 +116,13 @@ export function update_rules() {
 
 	return {
 		success: true,
-		message: 'Update launched in background. Monitoring starts automatically.'
+		message: 'Update launched in background.'
 	};
 }
 
 /**
  * RPC: check_update_status
- * Returns current state of the background rules update.
+ * Polls the background rules update progress.
  */
 export function check_update_status() {
 	const lock_file = '/tmp/snort_rules_update.lock';
@@ -179,7 +146,7 @@ export function check_update_status() {
 
 /**
  * RPC: cleanup_temp
- * Removes temporary tar.gz archives and update log/lock files.
+ * Removes temporary update artefacts.
  */
 export function cleanup_temp() {
 	system('rm -f /var/snort.d/*.tar.gz /tmp/snort*.tar.gz 2>/dev/null');
@@ -191,8 +158,7 @@ export function cleanup_temp() {
 
 /**
  * RPC: fix_rules
- * Creates a symlink /etc/snort/rules -> /var/snort.d/rules,
- * backing up any existing real directory first.
+ * Ensures /etc/snort/rules is a symlink pointing to /var/snort.d/rules.
  */
 export function fix_rules() {
 	const config_rules = '/etc/snort/rules';
@@ -201,7 +167,6 @@ export function fix_rules() {
 	let message = '';
 
 	if (system(`[ -d ${temp_rules} ]`) === 0) {
-		// Back up existing real directory
 		if (system(`[ -d ${config_rules} ] && [ ! -L ${config_rules} ]`) === 0) {
 			system(`mv ${config_rules} ${config_rules}.backup`);
 			message = 'Old directory backed up. ';
